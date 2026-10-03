@@ -1,0 +1,34 @@
+# Changelog
+
+Version 4.0.0: Major release. Added full YouTube Music support, rebuilt Last.fm authentication and scrobbling, automatic Last.fm reconnection after the initial authorization, improved setup and error handling, and a direct Last.fm API account creation link in the extension settings.
+
+Version 0.5.1: Added automatic Last.fm connection using the saved session. After the initial Last.fm authorization, the extension restores and validates the saved session automatically instead of requiring the Last.fm confirmation page each time.
+
+Version 0.5.0: Fixed Last.fm scrobbling. Scrobble requests now use the required POST method and improved request formatting and error handling.
+
+Version 0.4.9: Improved Last.fm scrobble request handling, including timestamp formatting and response/error handling.
+
+Version 0.4.8: Moved Last.fm API requests through the extension service worker to avoid the API request problems encountered from the YouTube Music panel.
+
+Version 0.4.7: Improved Last.fm setup when API credentials are missing. The extension now directs the user to the extension settings instead of requiring the setup location to be discovered manually.
+
+Version 0.4.6: Improved Last.fm API request handling and exposed clearer Last.fm API errors during authentication.
+
+Version 0.4.5: Moved Last.fm API credential retrieval to the service worker.
+
+Version 0.4.4: Fixed the Last.fm authorization-tab message handling so the authorization page can be opened correctly.
+
+Version 0.3.9: Made the YouTube Music connection controls visible and removed the redundant redirect_uri parameter from Last.fm authorization.
+
+Version 0.3.6: Fixed YouTube Music panel colors by removing an inherited invert filter.
+
+## 0.3.2 update
+
+- Fixed the Last.fm authentication retry typo.
+- Improved Last.fm authentication error handling.
+- Improved YouTube/YouTube Music player detection retries.
+- Added visible detection diagnostics for artist, track, and duration.
+- Improved chapter-change detection.
+- Removed the unused `management` API dependency from the MV3 service worker.
+
+Version 0.3.4: YouTube Music Last.fm panel is floated above the player bar to prevent the UI from collapsing into a tiny sliver.
