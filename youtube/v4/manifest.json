@@ -1,11 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Last.fm Scrobbler for YouTube™",
-  "version": "4.0.0",
-  "description": "Scrobbling YouTube music videos to Last.fm with support for chapters/tracks",
+  "version": "4.0.1",
+  "description": "Scrobbling YouTube music videos to Last.fm with support for chapters/tracks, an Opera YouTube Music sidebar, and a Now Playing feed for companion extensions",
   "permissions": [
     "storage",
-    "scripting"
+    "scripting",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://*.youtube.com/*",
@@ -32,7 +33,19 @@
       ],
       "js": [
         "/data/core/inject.js"
-      ]
+      ],
+      "all_frames": true
+    },
+    {
+      "run_at": "document_start",
+      "matches": [
+        "*://*.youtube.com/*"
+      ],
+      "js": [
+        "/data/core/watch.js"
+      ],
+      "all_frames": true,
+      "world": "MAIN"
     }
   ],
   "background": {
@@ -51,5 +64,31 @@
   "homepage_url": "https://add0n.com/lastfm-tool.html?from=youtube",
   "options_ui": {
     "page": "data/options/index.html"
+  },
+  "sidebar_action": {
+    "default_icon": {
+      "16": "data/icons/16.png",
+      "32": "data/icons/32.png",
+      "64": "data/icons/64.png"
+    },
+    "default_title": "Last.fm Scrobbler — YouTube Music",
+    "default_panel": "data/sidebar/index.html"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src https://music.youtube.com https://*.youtube.com;"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "youtube_sidebar",
+        "enabled": true,
+        "path": "data/sidebar/rules.json"
+      }
+    ]
+  },
+  "externally_connectable": {
+    "ids": [
+      "*"
+    ]
   }
 }

@@ -78,3 +78,8 @@ Floated the YouTube Music Last.fm panel above the player bar to prevent the UI f
 - Added visible detection diagnostics for artist, track, and duration.
 - Improved chapter-change detection.
 - Removed the unused `management` API dependency from the MV3 service worker.
+
+
+### v4.0.1 test update
+- Sends album and duration with Last.fm Now Playing updates when Last.fm provides the metadata.
+- Exposes normalized album metadata to the companion Now Playing feed.

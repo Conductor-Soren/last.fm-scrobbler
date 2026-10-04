@@ -84,6 +84,81 @@ const timer = {
   }
 };
 
+
+// Last.fm's Now Playing status is refreshed while the current track remains
+// active. This also keeps our internal state aligned for consumers such as the
+// Discord plugin. The external page-level feed is maintained by watch.js.
+const nowPlaying = {
+  artist: '',
+  track: '',
+  album: '',
+  duration: 0,
+  active: false,
+  albumArt: '',
+  timer: -1,
+  set(artist, track, album = '', albumArt = '', duration = 0) {
+    this.artist = artist;
+    this.track = track;
+    this.album = album || '';
+    this.albumArt = albumArt || '';
+    this.duration = Number(duration) || 0;
+    this.active = true;
+    this.refresh();
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.refresh(), 8000);
+  },
+  stop() {
+    this.active = false;
+    clearInterval(this.timer);
+    this.timer = -1;
+  },
+  pause() {
+    clearInterval(this.timer);
+    this.timer = -1;
+  },
+  resume() {
+    if (!this.artist || !this.track) return;
+    this.active = true;
+    this.refresh();
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.refresh(), 8000);
+  },
+  async refresh() {
+    if (!this.active || !this.artist || !this.track) return;
+    try {
+      const request = {
+        method: 'track.updateNowPlaying',
+        artist: this.artist,
+        track: this.track
+      };
+      if (this.album) request.album = this.album;
+      if (this.duration > 0) request.duration = Math.round(this.duration);
+      await lastfm.call(request);
+    } catch (e) {
+      console.warn('[Last.fm] Now Playing refresh failed:', e);
+    }
+  }
+};
+
+let discordStoppedKey = '';
+
+const discordStop = document.getElementById('discordStop');
+if (discordStop) {
+  discordStop.addEventListener('click', () => {
+    nowPlaying.stop();
+    timer.stop('Submit');
+    discordStoppedKey = window.currentVideoId || discordStoppedKey || '';
+    try {
+      window.parent.postMessage({
+        source: 'lastfm-scrobbler',
+        method: 'discord-stop',
+        version: 1
+      }, '*');
+    } catch (_) {}
+    toast('Discord detection stopped for this song');
+  });
+}
+
 const validateTrack = () => {
   const artist = document.getElementById('artist').value.trim();
   const track = document.getElementById('track').value.trim();
@@ -106,11 +181,13 @@ const validateTrack = () => {
     submit.value = state === 'authenticate' ? 'Authenticating' : 'Validating...';
   }).then(r => {
     if (r.track) {
-      lastfm.call({
-        method: 'track.updateNowPlaying',
-        artist,
-        track
-      }).catch(console.error);
+      const lastfmAlbum = r.track.album?.title || r.track.album?.name || '';
+      const albumImage = r.track.album?.image?.find(x => x.size === 'large')?.['#text'] ||
+        r.track.album?.image?.find(x => x.size === 'extralarge')?.['#text'] || '';
+      const album = window.youtubeAlbum || lastfmAlbum || '';
+      window.lastfmAlbum = album;
+      window.lastfmAlbumArt = window.lastfmAlbumArt || albumImage;
+      nowPlaying.set(artist, track, album, window.lastfmAlbumArt || '', duration);
       submit.disabled = false;
       toast('Ready to scrobble');
       timer.set(duration);
@@ -123,6 +200,27 @@ const validateTrack = () => {
       console.warn('Response', r);
     }
   }).catch(error);
+};
+
+
+// Toggle the host page's scrobbler iframe. In Opera's sidebar build the
+// Last.fm UI runs inside an extension iframe, so there is no tabId on the
+// runtime message sender. The parent YouTube Music page handles visibility.
+const persistentPanel = document.body.dataset.ytmusic === 'true';
+
+const setCoreVisibility = method => {
+  try {
+    window.parent.postMessage({
+      method: 'lastfm-core-visibility',
+      value: method
+    }, '*');
+  } catch (_) {}
+
+  // Normal tab fallback. The background worker handles this when a tabId
+  // exists; harmlessly ignore the message error in extension-only contexts.
+  try {
+    chrome.runtime.sendMessage({method}, () => void chrome.runtime.lastError);
+  } catch (_) {}
 };
 
 const openSettings = () => {
@@ -234,8 +332,38 @@ const play = request => {
   document.body.dataset.mode = 'parsing';
   toast('parsing...', -1);
 
-  const {data, response, duration, title, state} = request;
+  const {data, response, duration, title, state, albumArt, album} = request;
+  const videoId = request.videoId || data?.video_id || '';
+  if (videoId) window.currentVideoId = videoId;
+  if (videoId && discordStoppedKey === videoId) {
+    nowPlaying.stop();
+    timer.stop('Submit');
+    document.getElementById('submit').disabled = false;
+    document.getElementById('submit').value = 'Submit';
+    return;
+  }
   let {category} = request;
+  window.youtubeAlbum = album || data?.album || window.youtubeAlbum || '';
+  window.lastfmAlbumArt = albumArt || data?.albumArt || window.lastfmAlbumArt || '';
+
+  // Start/refresh Last.fm Now Playing immediately when YouTube Music changes
+  // tracks. Do not wait for track.getInfo/validation: MusicRichPresence polls
+  // Last.fm independently, so delaying this update can create a noticeable
+  // gap in Discord Rich Presence after a track change.
+  const immediateArtist = String(data?.author || '').replace(/vevo/i, '').trim();
+  const immediateTrack = String(title || data?.title || '').trim();
+  if (state === 1 && immediateArtist && immediateTrack) {
+    nowPlaying.set(
+      immediateArtist,
+      immediateTrack,
+      window.youtubeAlbum || '',
+      window.lastfmAlbumArt || '',
+      duration
+    );
+  }
+  else if (state !== 1) {
+    nowPlaying.stop();
+  }
 
   timer.mode = state === 1 ? 'active' : 'disabled';
 
@@ -254,13 +382,14 @@ const play = request => {
     blacklistAuthors: [],
     checkCategory: true
   }, async prefs => {
-    chrome.runtime.sendMessage({
-      method: 'show'
-    }, () => chrome.runtime.lastError);
+    setCoreVisibility('show');
 
-    const hide = () => chrome.runtime.sendMessage({
-      method: 'hide'
-    }, () => chrome.runtime.lastError);
+    const hide = () => {
+      // In the Opera YouTube Music sidebar the scrobbler is a persistent
+      // player-bar control. Toasts such as "less than 30 seconds" must not
+      // hide the panel; only the explicit Close button should do that.
+      if (!persistentPanel) setCoreVisibility('hide');
+    };
 
     // https://github.com/rNeomy/last.fm-scrobbler/issues/29
     if (prefs.pretendToBeMusic.length && prefs.categories.includes(category) === false) {
@@ -300,6 +429,22 @@ const play = request => {
         requestAnimationFrame(refreshMarquees);
 
         document.getElementById('duration').value = duration;
+        try {
+          window.parent.postMessage({
+            source: 'lastfm-scrobbler',
+            method: 'now-playing-normalized',
+            version: 1,
+            data: {
+              artist: artist || '',
+              track: track || '',
+              duration,
+              album: window.lastfmAlbum || '',
+              albumArt: window.lastfmAlbumArt || '',
+              playing: state === 1,
+              timestamp: Date.now()
+            }
+          }, '*');
+        } catch (_) {}
         toast('Validating...', -1);
 
         if (artist && track) {
@@ -318,9 +463,42 @@ const play = request => {
 window.addEventListener('message', e => {
   if (!e.data || typeof e.data !== 'object') return;
 
+  if (e.data.method === 'discord-stop') {
+    if (e.data.videoId) {
+      discordStoppedKey = e.data.videoId;
+      window.currentVideoId = e.data.videoId;
+    }
+    nowPlaying.stop();
+    timer.stop('Submit');
+    document.getElementById('submit').disabled = false;
+    document.getElementById('submit').value = 'Submit';
+    toast('Discord detection stopped for this song');
+    return;
+  }
+
+  if (e.data.method === 'waiting') {
+    const hasSong = e.data.hasSong === true;
+    if (!hasSong) {
+      document.body.dataset.mode = 'waiting-empty';
+      const toast = document.getElementById('toast');
+      if (toast) toast.textContent = '';
+      setCoreVisibility('hide');
+      return;
+    }
+
+    // A song is loaded, but playback has not started during this extension
+    // session. Keep the compact panel visible as a simple startup indicator
+    // without starting Last.fm validation, Now Playing, or the scrobble timer.
+    document.body.dataset.mode = 'waiting';
+    const toast = document.getElementById('toast');
+    if (toast) toast.textContent = 'Waiting for song to start…';
+    setCoreVisibility('show');
+    return;
+  }
+
   if (e.data.method === 'detection') {
     const {status, reason, title, author, duration} = e.data;
-    chrome.runtime.sendMessage({method: 'show'}, () => chrome.runtime.lastError);
+    setCoreVisibility('show');
 
     if (status === 'detected') {
       console.info('[Last.fm] YouTube detected:', {
@@ -341,7 +519,14 @@ window.addEventListener('message', e => {
     play(e.data);
   }
   else if (e.data.method === 'state') {
-    timer[e.data.state === 1 ? 'resume' : 'pause']();
+    if (e.data.state === 1) {
+      timer.resume();
+      nowPlaying.resume();
+    }
+    else {
+      timer.pause();
+      nowPlaying.pause();
+    }
   }
 });
 
@@ -395,10 +580,12 @@ document.querySelector('form').addEventListener('submit', e => {
   const track = document.getElementById('track').value;
   const artist = document.getElementById('artist').value;
 
+  const scrobbleAlbum = window.youtubeAlbum || window.lastfmAlbum || '';
   lastfm.call({
     method: 'track.scrobble',
     track,
     artist,
+    ...(scrobbleAlbum ? {album: scrobbleAlbum} : {}),
     timestamp: Math.floor((timer.now || Date.now()) / 1000)
   }).then(result => {
     const accepted = Number(result?.scrobbles?.['@accepted'] ?? result?.scrobbles?.accepted ?? 1);
@@ -408,14 +595,12 @@ document.querySelector('form').addEventListener('submit', e => {
       console.warn('[Last.fm] Scrobble ignored:', result);
       return;
     }
-    document.getElementById('close').click();
+    if (!persistentPanel) document.getElementById('close').click();
   }).catch(error);
 });
 
 document.getElementById('close').addEventListener('click', () => {
-  chrome.runtime.sendMessage({
-    method: 'hide'
-  }, () => chrome.runtime.lastError);
+  setCoreVisibility('hide');
   timer.stop();
 });
 

@@ -108,6 +108,26 @@ body[data-mode=parsing] :not(#toast):not(form) {
   display: none;
 }
 
+body[data-mode=waiting] form > :not(#toast),
+body[data-mode=waiting] > #close {
+  display: none;
+}
+
+body[data-mode=waiting] form {
+  justify-content: center;
+}
+
+body[data-mode=waiting] #toast {
+  flex: 1;
+  text-align: center;
+  color: var(--fg);
+}
+
+body[data-mode=waiting-empty] {
+  display: none;
+}
+
+
 #toast {
   flex: 1;
   text-align: right;

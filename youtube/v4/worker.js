@@ -1,5 +1,32 @@
 importScripts('/data/lastfm/md5.min.js');
 
+// External Now Playing API for companion extensions (for example, a Discord
+// presence plugin). Consumers can connect with chrome.runtime.connect using
+// this extension's runtime ID and receive a small heartbeat every few seconds.
+const nowPlayingPorts = new Set();
+let latestNowPlaying = null;
+
+chrome.runtime.onConnectExternal.addListener(port => {
+  nowPlayingPorts.add(port);
+  port.onDisconnect.addListener(() => nowPlayingPorts.delete(port));
+  if (latestNowPlaying) {
+    try {
+      port.postMessage({method: 'now-playing', version: 1, data: latestNowPlaying});
+    } catch (_) {}
+  }
+});
+
+const publishNowPlaying = data => {
+  latestNowPlaying = data || null;
+  for (const port of nowPlayingPorts) {
+    try {
+      port.postMessage({method: 'now-playing', version: 1, data: latestNowPlaying});
+    } catch (_) {
+      nowPlayingPorts.delete(port);
+    }
+  }
+};
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.method === 'inject') {
     chrome.scripting.executeScript({
@@ -10,6 +37,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       files: [request.file],
       world: 'MAIN'
     });
+  }
+
+  else if (request.method === 'now-playing-update') {
+    const data = request.data || null;
+    // Never keep a paused track as the active external presence. This is
+    // especially important after a YouTube Music reload, where the player
+    // can briefly expose metadata before its paused state settles.
+    publishNowPlaying(data?.playing ? data : null);
+    sendResponse({ok: true});
+    return;
+  }
+
+  else if (request.method === 'now-playing-stop') {
+    publishNowPlaying(null);
+    sendResponse({ok: true});
+    return;
   }
 
   else if (request.method === 'lastfm-get-config') {
@@ -191,16 +234,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   else if (request.method === 'show' || request.method === 'hide') {
+    // Sidebar extension pages do not have a sender.tab. The sidebar UI
+    // toggles its host-page iframe directly via postMessage; this worker
+    // path remains for normal YouTube tabs.
+    if (!sender.tab || !Number.isInteger(sender.tab.id)) {
+      sendResponse({ok: true});
+      return;
+    }
+
     chrome.scripting.executeScript({
       target: {
-        tabId: sender.tab.id
+        tabId: sender.tab.id,
+        ...(Number.isInteger(sender.frameId) && {frameIds: [sender.frameId]})
       },
       func: method => {
         const e = document.getElementById('last-fm-core');
-        e.classList[method === 'show' ? 'remove' : 'add']('hidden');
+        if (e) e.classList[method === 'show' ? 'remove' : 'add']('hidden');
       },
       args: [request.method]
+    }).then(() => sendResponse({ok: true})).catch(error => {
+      sendResponse({ok: false, error: error?.message || String(error)});
     });
+    return true;
   }
 });
 

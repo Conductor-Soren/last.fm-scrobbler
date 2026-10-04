@@ -18,34 +18,33 @@
   }
 }
 
-
-/* YouTube Music keeps its player bar in a clipped/fixed layout.
-   Float the Last.fm panel above it so the iframe cannot collapse into
-   a tiny sliver inside the player-bar layout. */
-#last-fm-core.ytmusic {
+/* YouTube Music: use the same bottom area as the native player instead of
+   floating a small card over the page. The scrobbler spans the available
+   player width and sits directly above the native player bar. */
+#last-fm-core.ytmusic-player-panel {
   position: fixed;
-  right: 12px;
-  bottom: 82px;
-  width: min(680px, calc(100vw - 24px));
-  height: 60px;
+  left: 0;
+  right: 0;
+  bottom: 74px !important;
+  width: 100%;
+  max-width: none;
+  height: 48px;
   margin: 0;
   z-index: 2147483647;
   background: #212121;
-  border: 1px solid var(--yt-spec-10-percent-layer, #242424);
-  border-radius: 8px;
+  border-top: 1px solid var(--yt-spec-10-percent-layer, #242424);
+  border-bottom: 1px solid var(--yt-spec-10-percent-layer, #242424);
   box-sizing: border-box;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, .35);
+  box-shadow: 0 -2px 10px rgba(0, 0, 0, .22);
 }
 
-#last-fm-core.ytmusic.hidden {
+#last-fm-core.ytmusic-player-panel.hidden {
   display: none;
 }
 
-@media (max-width: 600px) {
-  #last-fm-core.ytmusic {
-    right: 8px;
-    bottom: 78px;
-    width: calc(100vw - 16px);
-    height: 60px;
+@media (max-width: 700px) {
+  #last-fm-core.ytmusic-player-panel {
+    bottom: 74px !important;
+    height: 48px;
   }
 }
