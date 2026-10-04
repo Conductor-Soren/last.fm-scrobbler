@@ -167,6 +167,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  else if (request.method === 'lastfm-open-profile') {
+    (async () => {
+      try {
+        const prefs = await chrome.storage.local.get({session: null});
+        const name = String(prefs.session?.name || '').trim();
+        if (!name) {
+          throw new Error('Last.fm account name is not available.');
+        }
+
+        const url = 'https://www.last.fm/user/' + encodeURIComponent(name);
+        await chrome.tabs.create({
+          url,
+          active: true
+        });
+        sendResponse({ok: true});
+      }
+      catch (e) {
+        sendResponse({ok: false, error: e?.message || String(e)});
+      }
+    })();
+    return true;
+  }
+
   else if (request.method === 'show' || request.method === 'hide') {
     chrome.scripting.executeScript({
       target: {

@@ -154,6 +154,13 @@ body[data-ytmusic="true"] #close {
   white-space: nowrap;
 }
 
+/* Keep the changing Submit label from changing the panel layout. */
+body[data-ytmusic="true"] #submit {
+  width: 118px;
+  min-width: 118px;
+  box-sizing: border-box;
+}
+
 @media (max-width: 620px) {
   body[data-ytmusic="true"] {
     height: 100%;
@@ -177,3 +184,18 @@ body[data-ytmusic="true"] #close {
     flex: 2 1 150px;
   }
 }
+
+
+
+/* Compact connected-account link. The account name is intentionally shortened
+   so the Last.fm ↗ indicator always remains visible at the existing panel width. */
+body[data-ytmusic="true"] #connect {
+  width: 138px;
+  min-width: 138px;
+  max-width: 138px;
+  overflow: hidden;
+  padding-left: 7px;
+  padding-right: 7px;
+  box-sizing: border-box;
+}
+

@@ -138,6 +138,21 @@ const openSettings = () => {
   }
 };
 
+const openLastfm = () => {
+  chrome.runtime.sendMessage({
+    method: 'lastfm-open-profile'
+  }, response => {
+    if (chrome.runtime.lastError) {
+      console.warn('[Last.fm] Could not open profile:', chrome.runtime.lastError.message);
+      toast('Could not open Last.fm');
+      return;
+    }
+    if (!response?.ok) {
+      toast(response?.error || 'Could not open Last.fm');
+    }
+  });
+};
+
 const showSettingsButton = visible => {
   const button = document.getElementById('openSettings');
   button.dataset.visible = visible ? 'true' : 'false';
@@ -146,12 +161,27 @@ const showSettingsButton = visible => {
 
 const errorNeedsSettings = message => /credentials are not configured|api key|api secret|invalid api key|api error 10\b|api error 26\b|network error: 403\b/i.test(message);
 
+const formatConnectedAccount = name => {
+  const clean = String(name || 'Last.fm').trim();
+  // Keep the external-link marker visible within the existing compact panel.
+  const maxChars = 10;
+  const short = clean.length > maxChars ? clean.slice(0, maxChars) + '…' : clean;
+  return `🟢 ${short} ↗`;
+};
+
 const connect = () => {
   const button = document.getElementById('connect');
+
+  // When already connected, the compact account button opens the Last.fm profile.
+  if (button.dataset.connected === 'true') {
+    openLastfm();
+    return;
+  }
+
   button.disabled = true;
   button.value = 'Connecting...';
   showSettingsButton(false);
-  toast('Checking Last.fm settings...', -1);
+    toast('Checking Last.fm settings...', -1);
 
   // Check the local credentials before starting the network authentication
   // flow. If they are missing, take the user directly to Options instead of
@@ -164,9 +194,11 @@ const connect = () => {
       else if (stage === 'waiting') toast('Authorize Last.fm in the new tab...', -1);
     });
   }).then(session => {
-    button.value = 'Connected: ' + (session?.name || 'Last.fm');
+    button.value = formatConnectedAccount(session?.name || 'Last.fm');
+    button.title = 'Open Last.fm: ' + (session?.name || 'Last.fm');
+    button.dataset.connected = 'true';
     button.disabled = false;
-    if (document.getElementById('artist').value && document.getElementById('track').value) {
+        if (document.getElementById('artist').value && document.getElementById('track').value) {
       validateTrack();
     }
     else {
@@ -175,6 +207,8 @@ const connect = () => {
   }).catch(error => {
     button.disabled = false;
     button.value = 'Connect Last.fm';
+    button.title = 'Connect Last.fm';
+    button.dataset.connected = 'false';
     errorState(error);
   });
 };
@@ -187,12 +221,12 @@ const errorState = e => {
 
   if (needsSettings) {
     showSettingsButton(true);
-    toast('Last.fm credentials are missing or invalid. Opening Extension Settings...', -1);
+        toast('Last.fm credentials are missing or invalid. Opening Extension Settings...', -1);
     openSettings();
   }
   else {
     showSettingsButton(false);
-    toast(message, -1);
+        toast(message, -1);
   }
 };
 
@@ -263,6 +297,7 @@ const play = request => {
         document.body.dataset.mode = 'submit';
         document.getElementById('artist').value = artist || '';
         document.getElementById('track').value = track || '';
+        requestAnimationFrame(refreshMarquees);
 
         document.getElementById('duration').value = duration;
         toast('Validating...', -1);
@@ -319,20 +354,26 @@ const autoConnect = async () => {
 
     // A saved Last.fm session is enough to skip the authorization page. Show
     // the connected state immediately, then validate it in the background.
-    button.value = 'Connected: ' + (session.name || 'Last.fm');
-    button.disabled = true;
+    button.value = formatConnectedAccount(session.name || 'Last.fm');
+    button.title = 'Open Last.fm: ' + (session.name || 'Last.fm');
+    button.dataset.connected = 'true';
+    button.disabled = false;
     showSettingsButton(false);
-
+    
     const validated = await lastfm.validateSession();
     if (!validated) {
       button.value = 'Connect Last.fm';
+      button.title = 'Connect Last.fm';
+      button.dataset.connected = 'false';
       button.disabled = false;
-      return;
+            return;
     }
 
-    button.value = 'Connected: ' + (validated.name || 'Last.fm');
-    button.disabled = true;
-    console.info('[Last.fm] Restored saved session for:', validated.name || 'Last.fm');
+    button.value = formatConnectedAccount(validated.name || 'Last.fm');
+    button.title = 'Open Last.fm: ' + (validated.name || 'Last.fm');
+    button.dataset.connected = 'true';
+    button.disabled = false;
+        console.info('[Last.fm] Restored saved session for:', validated.name || 'Last.fm');
   }
   catch (e) {
     // Do not interrupt song detection if startup validation cannot reach
@@ -379,5 +420,63 @@ document.getElementById('close').addEventListener('click', () => {
 });
 
 // stop counting on edit
-document.getElementById('artist').addEventListener('input', () => timer.stop());
-document.getElementById('track').addEventListener('input', () => timer.stop());
+
+
+// Scroll long artist/track names back and forth when the compact panel cannot
+// display the complete value. Short values remain completely still.
+const marqueeInputs = [
+  document.getElementById('artist'),
+  document.getElementById('track')
+];
+
+const marqueeState = new WeakMap();
+
+const updateMarquee = input => {
+  if (!input) return;
+  const old = marqueeState.get(input);
+  if (old?.timer) clearInterval(old.timer);
+
+  input.scrollLeft = 0;
+  const max = input.scrollWidth - input.clientWidth;
+  if (max <= 2) {
+    marqueeState.delete(input);
+    return;
+  }
+
+  let direction = 1;
+  let paused = true;
+  let pauseTicks = 0;
+
+  const timer = setInterval(() => {
+    if (paused) {
+      pauseTicks++;
+      if (pauseTicks >= 18) {
+        paused = false;
+        pauseTicks = 0;
+      }
+      return;
+    }
+
+    input.scrollLeft += direction;
+    if (input.scrollLeft >= max) {
+      input.scrollLeft = max;
+      direction = -1;
+      paused = true;
+    }
+    else if (input.scrollLeft <= 0) {
+      input.scrollLeft = 0;
+      direction = 1;
+      paused = true;
+    }
+  }, 80);
+
+  marqueeState.set(input, {timer});
+};
+
+const refreshMarquees = () => marqueeInputs.forEach(updateMarquee);
+
+document.getElementById('artist').addEventListener('input', () => { timer.stop(); refreshMarquees(); });
+document.getElementById('track').addEventListener('input', () => { timer.stop(); refreshMarquees(); });
+
+
+requestAnimationFrame(refreshMarquees);

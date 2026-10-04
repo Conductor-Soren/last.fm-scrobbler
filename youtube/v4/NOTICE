@@ -1,0 +1,14 @@
+Last.fm Scrobbler for YouTube v4.0.0
+
+This is an independently maintained continuation of the original
+Last.fm Scrobbler for Web Services project.
+
+Original project license: Mozilla Public License, Version 2.0 (MPL-2.0).
+See LICENSE for the complete license text.
+
+This release is not an official release or endorsement by the original
+author or publisher.
+
+Major modifications in v4.0.0 include YouTube Music support, rebuilt
+Last.fm authentication and scrobbling, automatic Last.fm reconnection,
+and updated setup/error handling.

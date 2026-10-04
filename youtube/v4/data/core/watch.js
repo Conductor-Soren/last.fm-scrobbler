@@ -199,3 +199,30 @@ const get = () => [...document.querySelectorAll('.html5-video-player')]
     window.addEventListener('yt-navigate-finish', () => watch());
   }
 }
+
+
+// v4.0.0 UI polish: scroll artist/track text only when it overflows.
+function setupLastfmMarquee(element) {
+  if (!element) return;
+  const text = element.textContent || "";
+  let span = element.querySelector(".scroll-text");
+  if (!span) {
+    span = document.createElement("span");
+    span.className = "scroll-text";
+    span.textContent = text;
+    element.textContent = "";
+    element.appendChild(span);
+  } else {
+    span.textContent = text;
+  }
+  requestAnimationFrame(() => {
+    const overflow = span.scrollWidth > element.clientWidth + 2;
+    element.classList.toggle("has-overflow", overflow);
+    if (overflow) {
+      const distance = element.clientWidth - span.scrollWidth;
+      span.style.setProperty("--lastfm-scroll-distance", `${distance}px`);
+    } else {
+      span.style.removeProperty("--lastfm-scroll-distance");
+    }
+  });
+}
